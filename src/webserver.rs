@@ -1,16 +1,41 @@
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::{fs, thread};
+use webserver::ThreadPool;
 
 pub fn start() {
   // bind() in this scenario works like the new() in that it will return a new TcpListener instance
   let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+  let pool = ThreadPool::new(4); // creating a thread pool with a given number of threads
 
-  for stream in listener.incoming() {
-    println!("Connection established!");
-    let stream: TcpStream = stream.unwrap();
-    handle_connection(stream);
+  // // ## Single-thread approach
+  // for stream in listener.incoming() {
+  //   println!("Connection established!");
+  //   let stream: TcpStream = stream.unwrap();
+  //   handle_connection(stream);
+  // }
+
+  // // ## Thread-spawning approach
+  // for stream in listener.incoming() {
+  //   println!("Connection established!");
+  //   let stream: TcpStream = stream.unwrap();
+  //   thread::spawn(|| handle_connection(stream));
+  // }
+
+  // // ## Thread pool approach
+  // for stream in listener.incoming() {
+  //   println!("> Connection established!");
+  //   let stream: TcpStream = stream.unwrap();
+  //   pool.execute(|| handle_connection(stream));
+  // }
+
+  // ## Gracefully shutting down example - after taking 2 requests
+  for stream in listener.incoming().take(2) {
+    let stream = stream.unwrap();
+    pool.execute(|| handle_connection(stream));
   }
+
+  println!("Shutting down the web server.")
 }
 
 fn handle_connection(mut stream: TcpStream) {
@@ -35,8 +60,12 @@ fn handle_connection(mut stream: TcpStream) {
   //   ("HTTP/1.1 404 NOT FOUND", read_content_file("404.html"))
   // };
 
-  let (resp_status_line, content) = match request_line.as_str() {
+  let (resp_status_line, content) = match &request_line[..] {
     "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", read_content_file("hello.html")),
+    "GET /sleep HTTP/1.1" => {
+      thread::sleep(std::time::Duration::from_secs(8));
+      ("HTTP/1.1 200 OK", read_content_file("hello.html"))
+    }
     _ => ("HTTP/1.1 404 NOT FOUND", read_content_file("404.html")),
   };
 
